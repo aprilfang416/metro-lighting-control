@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>智能地铁车厢灯光调节系统</title>
+  <style>
+    :root{
+      --bg:#0f1724;
+      --panel:#0b1220;
+      --muted:#9aa6b2;
+      --accent:#1e88e5;
+      --card:#0f1724;
+      --glass: rgba(255,255,255,0.03);
+      --track:#cbd5e1;
+    }
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'PingFang SC','Hiragino Sans GB',Arial;background:linear-gradient(180deg,#071025 0%, #071326 50%, #0b1630 100%);color:#e6eef6}
+    .app{max-width:1200px;margin:20px auto;padding:20px}
+    header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    h1{margin:0;font-size:20px}
+    .topline{color:var(--muted);font-size:13px}
+    .layout{display:grid;grid-template-columns:320px 1fr;gap:16px;margin-top:16px}
+    .panel{background:var(--glass);padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,0.6);backdrop-filter: blur(6px)}
+    .env-btn{display:block;width:100%;text-align:left;padding:8px 10px;margin:6px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--muted);cursor:pointer}
+    .env-btn.active{background:linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));color:#fff;border-color:rgba(255,255,255,0.06)}
+    .switch{display:flex;align-items:center;gap:8px;margin-top:12px}
+    .switch input{transform:scale(1.2)}
+    .cars-wrap{overflow:auto;padding:6px;display:flex;gap:12px;align-items:flex-start}
+    .car{width:320px;min-width:320px;border-radius:12px;padding:10px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.03)}
+    .car-outer{position:relative;border-radius:10px;height:180px;background:linear-gradient(90deg,#0b1b2b,#06202a);border:1px solid rgba(255,255,255,0.04);overflow:hidden}
+    .door{position:absolute;width:36px;height:56px;background:linear-gradient(180deg,#eef2f5 0%, #d7e2ea 100%);opacity:0.12;border-left:1px solid rgba(255,255,255,0.03);border-right:1px solid rgba(255,255,255,0.03);top:62px;border-radius:2px}
+    .door.left{left:12px}
+    .door.left.bottom{top:110px}
+    .door.right{right:12px}
+    .door.right.bottom{top:110px}
+    .car-head{position:absolute;left:-28px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted)}
+    .car-tail{position:absolute;right:-28px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted)}
+    .strips{position:absolute;left:12px;right:12px;top:14px;display:flex;flex-direction:column;gap:12px}
+    .strip{height:14px;border-radius:8px;background:rgba(255,255,255,0.03);overflow:hidden;border:1px solid rgba(255,255,255,0.02);display:flex;align-items:center;padding:2px 6px;box-sizing:border-box}
+    .strip .bar{height:8px;border-radius:6px;transition:width 800ms ease, opacity 600ms linear;box-shadow:0 6px 18px rgba(0,0,0,0.6) inset}
+    .strip .label{margin-left:8px;font-size:12px;color:var(--muted);min-width:40px;text-align:right}
+    .controls{display:grid;grid-template-columns:1fr;gap:8px}
+    .control-row{display:flex;gap:8px;align-items:center}
+    .control-row select,input[type=range]{flex:1}
+    button.primary{background:linear-gradient(90deg,var(--accent),#1565c0);border:none;color:white;padding:8px 10px;border-radius:8px;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:8px 10px;border-radius:8px;cursor:pointer}
+    .stats{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+    footer{margin-top:14px;font-size:12px;color:var(--muted);text-align:center}
+    /* responsive */
+    @media(max-width:980px){.layout{grid-template-columns:1fr;}.cars-wrap{flex-direction:column;align-items:center}.car{width:92%}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>智能地铁车厢灯光调节系统</h1>
+        <div class="topline">6 节车厢 · 每节 4 条 LED 灯带</div>
+      </div>
+      
+    </header>
+
+    <div class="layout">
+      <!-- left panel -->
+      <aside class="panel">
+        <h3 style="margin:0;color:white">环境与自动控制</h3>
+        <div style="margin-top:8px" id="env-buttons">
+          <!-- buttons injected -->
+        </div>
+
+        <div class="switch">
+          <input type="checkbox" id="master-switch" checked />
+          <label for="master-switch" style="font-size:13px">列车主开关（Master）</label>
+        </div>
+
+        <div style="margin-top:12px">
+          <label style="font-size:13px;color:var(--muted)">自动模式（每 5 秒切换环境）</label>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button class="primary" id="auto-start">启动自动</button>
+            <button class="ghost" id="auto-stop">停止</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <h4 style="margin:0;color:white;font-size:13px">当前统计</h4>
+          <div class="stats" style="margin-top:8px">
+            <div>环境：<span id="cur-env">晴天</span></div>
+            <div>主开关：<span id="cur-master">开启</span></div>
+            <div>总灯数：<span id="total-lamps">24</span></div>
+            <div>平均亮度：<span id="avg-bright">0%</span></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- main panel -->
+      <main class="panel">
+        <h3 style="margin:0;color:white">列车总览（车头在左）</h3>
+
+        <div style="margin-top:12px" class="cars-wrap" id="cars-wrap">
+          <!-- cars injected here -->
+        </div>
+
+        <div style="margin-top:12px" class="controls">
+          <h4 style="margin:0;color:white">列车员面板（手动控制）</h4>
+
+          <div class="control-row" style="margin-top:8px">
+            <label style="width:70px;color:var(--muted)">车厢</label>
+            <select id="sel-car"></select>
+            <label style="width:70px;color:var(--muted)">灯带</label>
+            <select id="sel-strip"></select>
+          </div>
+
+          <div class="control-row">
+            <label style="width:70px;color:var(--muted)">亮度</label>
+            <input type="range" id="manual-range" min="0" max="100" value="50" />
+            <div style="width:56px;text-align:right;color:var(--muted)" id="manual-val">50%</div>
+          </div>
+
+          <div style="display:flex;gap:8px">
+            <button class="primary" id="send-single">发送：单条灯带</button>
+            <button class="ghost" id="send-car">发送：整节车厢</button>
+            <button class="ghost" id="send-all">发送：全列车</button>
+          </div>
+        </div>
+
+        
+      </main>
+    </div>
+
+  <script>
+    // Configuration
+    const CARRIAGES = 6;
+    const STRIPS = 4;
+    const ENV_PRESETS = {
+      "晴天": 30,
+      "阴天": 55,
+      "下雨": 70,
+      "隧道": 95,
+      "车站": 80
+    };
+    const ENV_ORDER = Object.keys(ENV_PRESETS);
+    let autoTimer = null;
+    let autoIndex = 0;
+
+    // State: brightness [car][strip]
+    let brightness = Array.from({length: CARRIAGES},()=>Array.from({length:STRIPS},()=>ENV_PRESETS["晴天"]));
+    let masterOn = true;
+    let currentEnv = "晴天";
+
+    // Helpers
+    const el = (id)=>document.getElementById(id);
+    function clamp(v){return Math.max(0,Math.min(100,Math.round(v)));}
+    function updateStats(){
+      el('cur-env').textContent = currentEnv;
+      el('cur-master').textContent = masterOn? '开启':'关闭';
+      el('avg-bright').textContent = Math.round(brightness.flat().reduce((a,b)=>a+b,0)/(CARRIAGES*STRIPS)) + '%';
+      el('total-lamps').textContent = (CARRIAGES*STRIPS);
+      // update time info
+      const now = new Date();
+      el('time-info').textContent = now.toLocaleString();
+    }
+
+    // build env buttons
+    const envButtons = el('env-buttons');
+    Object.keys(ENV_PRESETS).forEach((k)=>{
+      const b = document.createElement('button');
+      b.textContent = k + '（' + ENV_PRESETS[k] + '%）';
+      b.className = 'env-btn' + (k===currentEnv?' active':'');
+      b.onclick = ()=>applyEnv(k);
+      envButtons.appendChild(b);
+    });
+
+    function setEnvButtonsActive(){
+      Array.from(envButtons.children).forEach(btn=>{
+        btn.classList.toggle('active', btn.textContent.startsWith(currentEnv));
+      });
+    }
+
+    // create car elements
+    const carsWrap = el('cars-wrap');
+    function createCarElement(index){
+      const car = document.createElement('div'); car.className='car';
+      const carInner = document.createElement('div'); carInner.className='car-outer';
+      // head/tail
+      if(index===0){ const h = document.createElement('div'); h.className='car-head'; h.textContent='车头'; carInner.appendChild(h); }
+      if(index===CARRIAGES-1){ const t = document.createElement('div'); t.className='car-tail'; t.textContent='车尾'; carInner.appendChild(t); }
+      // doors
+      const dl1 = document.createElement('div'); dl1.className='door left'; carInner.appendChild(dl1);
+      const dl2 = document.createElement('div'); dl2.className='door left bottom'; carInner.appendChild(dl2);
+      const dr1 = document.createElement('div'); dr1.className='door right'; carInner.appendChild(dr1);
+      const dr2 = document.createElement('div'); dr2.className='door right bottom'; carInner.appendChild(dr2);
+      // strips container
+      const strips = document.createElement('div'); strips.className='strips';
+      for(let s=0;s<STRIPS;s++){
+        const strip = document.createElement('div'); strip.className='strip';
+        const bar = document.createElement('div'); bar.className='bar';
+        bar.style.width = brightness[index][s] + '%';
+        bar.style.opacity = masterOn ? (brightness[index][s]/100) : 0;
+        bar.style.background = 'linear-gradient(90deg, rgba(255,244,200,0.95), rgba(255,150,20,0.98))';
+        bar.dataset.car = index; bar.dataset.strip = s;
+        const label = document.createElement('div'); label.className='label'; label.textContent = Math.round(brightness[index][s]) + '%';
+        strip.appendChild(bar);
+        strip.appendChild(label);
+        strips.appendChild(strip);
+      }
+      carInner.appendChild(strips);
+      car.appendChild(carInner);
+      const title = document.createElement('div'); title.style.marginTop='8px'; title.style.color='var(--muted)'; title.style.fontSize='13px'; title.textContent = '车厢 ' + (index+1);
+      car.appendChild(title);
+      return car;
+    }
+
+    function renderCars(){
+      carsWrap.innerHTML='';
+      for(let i=0;i<CARRIAGES;i++){
+        carsWrap.appendChild(createCarElement(i));
+      }
+      // attach small click to bars to select
+      document.querySelectorAll('.bar').forEach(b=>{
+        b.addEventListener('click',(ev)=>{
+          const car = Number(b.dataset.car);
+          const strip = Number(b.dataset.strip);
+          selCar.value = car;
+          selStrip.value = strip;
+          manualRange.value = brightness[car][strip];
+          manualVal.textContent = manualRange.value + '%';
+          // highlight briefly
+          b.style.boxShadow = '0 0 18px rgba(255,200,80,0.9)';
+          setTimeout(()=>b.style.boxShadow='',600);
+        });
+      });
+      updateStripLabels();
+    }
+
+    function updateStripLabels(){
+      const bars = document.querySelectorAll('.strip');
+      let idx = 0;
+      for(let c=0;c<CARRIAGES;c++){
+        for(let s=0;s<STRIPS;s++){
+          const barEl = carsWrap.children[c].querySelectorAll('.strip')[s];
+          const bar = barEl.querySelector('.bar');
+          const label = barEl.querySelector('.label');
+          label.textContent = Math.round(brightness[c][s]) + '%';
+          bar.style.width = brightness[c][s] + '%';
+          bar.style.opacity = masterOn ? (brightness[c][s]/100) : 0;
+        }
+      }
+    }
+
+    // populate selects
+    const selCar = el('sel-car');
+    const selStrip = el('sel-strip');
+    for(let i=0;i<CARRIAGES;i++){
+      const o = document.createElement('option'); o.value=i; o.textContent='车厢 '+(i+1); selCar.appendChild(o);
+    }
+    for(let s=0;s<STRIPS;s++){
+      const o = document.createElement('option'); o.value=s; o.textContent='灯带 '+(s+1); selStrip.appendChild(o);
+    }
+
+    // manual controls
+    const manualRange = el('manual-range');
+    const manualVal = el('manual-val');
+    manualRange.addEventListener('input',()=>{
+      manualVal.textContent = manualRange.value + '%';
+    });
+
+    // send commands
+    function sendSingle(){
+      const car = Number(selCar.value);
+      const strip = Number(selStrip.value);
+      const v = clamp(Number(manualRange.value));
+      brightness[car][strip] = v;
+      updateStripLabels();
+      updateStats();
+    }
+    function sendCar(){
+      const car = Number(selCar.value);
+      const v = clamp(Number(manualRange.value));
+      for(let s=0;s<STRIPS;s++) brightness[car][s]=v;
+      updateStripLabels();
+      updateStats();
+    }
+    function sendAll(){
+      const v = clamp(Number(manualRange.value));
+      for(let c=0;c<CARRIAGES;c++) for(let s=0;s<STRIPS;s++) brightness[c][s]=v;
+      updateStripLabels();
+      updateStats();
+    }
+
+    el('send-single').addEventListener('click',sendSingle);
+    el('send-car').addEventListener('click',sendCar);
+    el('send-all').addEventListener('click',sendAll);
+
+    // master switch
+    el('master-switch').addEventListener('change',(e)=>{
+      masterOn = e.target.checked;
+      updateStripLabels();
+      updateStats();
+    });
+
+    // environment apply with animation (gradual transition)
+    function applyEnv(env){
+      currentEnv = env;
+      setEnvButtonsActive();
+      // smoothly interpolate each strip towards preset
+      const target = ENV_PRESETS[env];
+      const steps = 24;
+      const duration = 800; // ms
+      const interval = Math.round(duration/steps);
+      const start = brightness.map(row=>row.slice());
+      let step = 0;
+      const t = setInterval(()=>{
+        step++;
+        for(let c=0;c<CARRIAGES;c++){
+          for(let s=0;s<STRIPS;s++){
+            const from = start[c][s];
+            const to = target;
+            const val = from + (to - from) * (step/steps);
+            brightness[c][s] = clamp(val);
+          }
+        }
+        updateStripLabels();
+        if(step>=steps) { clearInterval(t); updateStats(); }
+      }, interval);
+    }
+
+    // auto mode
+    el('auto-start').addEventListener('click',()=>{
+      if(autoTimer) return;
+      autoIndex = 0;
+      autoTimer = setInterval(()=>{
+        const env = ENV_ORDER[autoIndex % ENV_ORDER.length];
+        applyEnv(env);
+        autoIndex++;
+      }, 5000);
+    });
+    el('auto-stop').addEventListener('click',()=>{
+      if(autoTimer){ clearInterval(autoTimer); autoTimer=null; }
+    });
+
+    // init
+    renderCars();
+    updateStats();
+    setEnvButtonsActive();
+
+    // attach env buttons click already done; expose applyEnv for initial
+    // set initial env
+    applyEnv(currentEnv);
+
+    // accessibility: keyboard shortcuts
+    window.addEventListener('keydown',(e)=>{
+      if(e.key==='a' && e.ctrlKey){ // ctrl+a toggles master
+        masterOn = !masterOn;
+        el('master-switch').checked = masterOn;
+        updateStripLabels();
+        updateStats();
+      }
+    });
+
+  </script>
+</body>
+</html>
